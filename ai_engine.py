@@ -1,103 +1,89 @@
-import os
 import json
+import requests
 import time
-from urllib.request import urlopen, Request
-import numpy as np
+from typing import Dict, Any
 
 # --- Configuration ---
-# NOTE: Removed global API_KEY definition. It must be passed in the function calls.
+# API endpoint for the Gemini model
+GEMINI_API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 MODEL_NAME = "gemini-2.5-flash-preview-05-20"
 MAX_RETRIES = 5
 
-def fetch_gemini_content(api_key, payload, retries=0):
+def fetch_gemini_content(api_key: str, payload: Dict[str, Any]) -> str:
     """
-    Handles the synchronous API call with exponential backoff.
-    Requires the api_key to be passed as an argument.
+    Handles API request to Gemini with exponential backoff for resilience.
     """
     if not api_key:
-        return "⚠️ Gemini API Key not provided. Cannot run AI analysis."
-    
-    API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
-    
-    headers = {'Content-Type': 'application/json'}
-    data = json.dumps(payload).encode('utf-s8')
-    
-    try:
-        req = Request(API_URL, data=data, headers=headers, method='POST')
-        
-        with urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode())
-            text = result.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', 
-                                                                                                  "AI summary failed to load.")
-            return text
-            
-    except Exception as e:
-        if retries < MAX_RETRIES:
-            delay = 2 ** retries + np.random.uniform(0, 1) # Exponential backoff + jitter
-            time.sleep(delay)
-            # Recursive call, passing the key
-            return fetch_gemini_content(api_key, payload, retries + 1)
-        else:
-            # Provide error context suitable for the UI
-            return f"❌ AI call failed after {MAX_RETRIES} retries. Check API key validity and console for error details: {e}"
+        return "❌ API Key required for AI analysis."
 
-def get_ai_summary(api_key, metric_name, data_summary):
-    """Generates a concise AI summary for a single metric, requiring the api_key."""
-    if not api_key:
-        return "Awaiting API Key..."
+    api_url = GEMINI_API_URL_TEMPLATE.format(model=MODEL_NAME, api_key=api_key)
     
+    for attempt in range(MAX_RETRIES):
+        try:
+            headers = {'Content-Type': 'application/json'}
+            
+            # FIX: Changed 'utf-s8' to the correct standard encoding 'utf-8'
+            data = json.dumps(payload).encode('utf-8') 
+
+            response = requests.post(api_url, headers=headers, data=data)
+            response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
+
+            result = response.json()
+            candidate = result.get('candidates', [{}])[0]
+
+            if candidate and candidate.get('content') and candidate['content'].get('parts'):
+                return candidate['content']['parts'][0]['text']
+            
+            return f"⚠️ Model response incomplete: {json.dumps(result)}"
+
+        except requests.exceptions.HTTPError as e:
+            # Handle specific HTTP errors (e.g., 400 Bad Request, 429 Rate Limit)
+            error_message = f"HTTP Error: {e.response.status_code} - {e.response.text}"
+            if e.response.status_code == 429 and attempt < MAX_RETRIES - 1:
+                # Rate limit, retry with backoff
+                time.sleep(2 ** attempt)
+                continue
+            return f"❌ AI API Error: {error_message}"
+        except Exception as e:
+            return f"❌ An unexpected error occurred during the API call: {e}"
+
+    return "❌ Failed to connect to Gemini API after multiple retries (Rate Limit or Connection Error)."
+
+def get_ai_summary(api_key: str, metric_name: str, metric_data: str) -> str:
+    """Generates a concise summary for a single metric."""
     system_prompt = (
-        f"You are a technical Program Analyst expert. Your task is to analyze the provided data for the '{metric_name}' metric. "
-        "Provide a concise, professional summary of exactly 3-4 sentences. "
-        "Highlight the key trend, potential cause, and primary recommendation."
+        f"You are a Senior Agile Coach and AI Analyst. Analyze the following data for '{metric_name}'."
+        f"Provide a concise, 3-4 sentence summary. Use emoji (✅, ⚠️, or ❌) at the start to indicate overall health. "
+        f"Do not use markdown formatting (like bolding or lists)."
     )
-    user_query = f"Analyze the following programmatic data for {metric_name}:\n\n{data_summary}"
     
+    user_query = f"Data for {metric_name}: \n\n{metric_data}"
+
     payload = {
         "contents": [{"parts": [{"text": user_query}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]},
     }
     
-    # Pass the key to the fetch function
     return fetch_gemini_content(api_key, payload)
 
-def get_executive_summary(api_key, all_metrics_data):
-    """Generates the holistic Executive Summary, requiring the api_key."""
-    if not api_key:
-        return "Awaiting API Key..."
 
+def get_executive_summary(api_key: str, metrics_data: Dict[str, Any]) -> str:
+    """Generates an executive-level summary synthesizing all metrics."""
     system_prompt = (
-        "You are a C-level Executive Program Director. Your task is to synthesize all provided data into a single, high-impact Executive Summary (max 100 words). "
-        "Start with a high-level assessment using a single primary emoji (✅ for green, ⚠️ for yellow/caution, or ❌ for red/critical). "
-        "Focus on the biggest risk and the most positive trend. This summary must be suitable for a leadership PPT slide."
+        "You are an Executive AI Analyst for a large enterprise. Your task is to generate a single, highly "
+        "synthesized paragraph (max 5 sentences) for senior leadership. Evaluate the program's health "
+        "across all metrics provided below. Start your summary with a single emoji (🔴 for Critical, "
+        "🟠 for Warning, or 🟢 for Healthy). Focus on synthesizing key trends, risks (from RAID), "
+        "and overall velocity/quality."
     )
     
-    # Prepare a human-readable summary of the data for the LLM
-    # Use .get with a default message in case data is incomplete
-    data_for_llm = f"""
-    --- VELOCITY & COMPLETION ---
-    {all_metrics_data.get('completion', 'Data not available.')}
-
-    --- CAPACITY (Recent) ---
-    {all_metrics_data.get('capacity', 'Data not available.')}
-
-    --- DEFECT DENSITY & OPEN STAGE ---
-    Open Defects by Stage: {all_metrics_data.get('stage', 'Data not available.')}
-    Density Data: {all_metrics_data.get('density', 'Data not available.')}
-
-    --- RAID STATUS (OPEN ITEMS) ---
-    {all_metrics_data.get('raid', 'Data not available.')}
-
-    --- RAW DEFECTS CONTEXT ---
-    {all_metrics_data.get('raw_defects_summary', 'Data not available.')}
-    """
+    data_points = "\n".join([f"- {k}: {v}" for k, v in metrics_data.items() if k not in ["raw_jira_summary", "raw_defects_summary"]])
     
-    user_query = f"Synthesize a leadership brief from this combined program health data:\n\n{data_for_llm}"
-    
+    user_query = f"Synthesize the health status based on the following metric data:\n\n{data_points}"
+
     payload = {
         "contents": [{"parts": [{"text": user_query}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]},
     }
     
-    # Pass the key to the fetch function
     return fetch_gemini_content(api_key, payload)

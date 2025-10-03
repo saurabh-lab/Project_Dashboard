@@ -50,11 +50,12 @@ def fetch_gemini_content(api_key: str, payload: Dict[str, Any]) -> str:
     return "❌ Failed to connect to Gemini API after multiple retries (Rate Limit or Connection Error)."
 
 def get_ai_summary(api_key: str, metric_name: str, metric_data: str) -> str:
-    """Generates a concise summary for a single metric."""
+    """Generates a concise summary for a single metric in a bulleted format."""
     system_prompt = (
         f"You are a Senior Agile Coach and AI Analyst. Analyze the following data for '{metric_name}'."
-        f"Provide a concise, 3-4 sentence summary. Use emoji (✅, ⚠️, or ❌) at the start to indicate overall health. "
-        f"Do not use markdown formatting (like bolding or lists)."
+        f"Provide a summary consisting of exactly 4 to 5 concise bullet points."
+        f"Start the summary with a single emoji (✅ for Healthy, ⚠️ for Warning, or ❌ for Critical) on the first line."
+        f"Use simple markdown for the bullets but ensure each bullet is very short and focused."
     )
     
     user_query = f"Data for {metric_name}: \n\n{metric_data}"
@@ -68,15 +69,20 @@ def get_ai_summary(api_key: str, metric_name: str, metric_data: str) -> str:
 
 
 def get_executive_summary(api_key: str, metrics_data: Dict[str, Any]) -> str:
-    """Generates an executive-level summary synthesizing all metrics."""
+    """
+    Generates an executive-level summary synthesizing all metrics into categorized sections.
+    """
     system_prompt = (
-        "You are an Executive AI Analyst for a large enterprise. Your task is to generate a single, highly "
-        "synthesized paragraph (max 5 sentences) for senior leadership. Evaluate the program's health "
-        "across all metrics provided below. Start your summary with a single emoji (🔴 for Critical, "
-        "🟠 for Warning, or 🟢 for Healthy). Focus on synthesizing key trends, risks (from RAID), "
-        "and overall velocity/quality."
+        "You are an Executive AI Analyst for a large enterprise. Your task is to generate a highly "
+        "synthesized report for senior leadership, organized into three mandatory Markdown headings: "
+        "'## Overall Health & Status', '## Key Risks and Impediments', and '## Executive Recommendations'. "
+        "For each section, provide 2-4 concise bullet points."
+        "Start your response with a single emoji (🔴 for Critical, 🟠 for Warning, or 🟢 for Healthy) "
+        "on the first line, followed by the first heading."
+        "Focus on synthesizing key trends, high-impact risks (from RAID), and critical quality/velocity issues."
     )
     
+    # Filter out raw summary data which is too verbose for the executive prompt
     data_points = "\n".join([f"- {k}: {v}" for k, v in metrics_data.items() if k not in ["raw_jira_summary", "raw_defects_summary"]])
     
     user_query = f"Synthesize the health status based on the following metric data:\n\n{data_points}"

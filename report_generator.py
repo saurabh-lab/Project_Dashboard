@@ -1,5 +1,6 @@
 from pptx import Presentation
 from pptx.util import Inches
+from datetime import date
 
 def generate_ppt(metrics_data, ai_summaries):
     """
@@ -44,7 +45,7 @@ def generate_ppt(metrics_data, ai_summaries):
     
     # --- Saving the File ---
     # In a real environment, this saves the file:
-    # file_path = "Program_Health_Report.pptx"
-    # prs.save(file_path)
+    file_path = "Program_Health_Report.pptx"
+    prs.save(file_path)
     
     return "Program_Health_Report.pptx"

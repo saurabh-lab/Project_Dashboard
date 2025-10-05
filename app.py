@@ -16,8 +16,11 @@ st.set_page_config(layout="wide", page_title="AI Program Health Dashboard")
 @st.cache_resource
 def setup_mock_files():
     """Generates mock files if they don't exist and provides download links."""
-    st.info("Generating mock data files for testing (run once).")
-    return generate_mock_data()
+    # Check if files exist before regenerating
+    if not all(os.path.exists(f) for f in ['jira_issues.csv', 'defects.csv', 'raid_log.csv']):
+        st.info("Generating mock data files for testing (run once).")
+        return generate_mock_data()
+    return ['jira_issues.csv', 'defects.csv', 'raid_log.csv'] # Return existing file names if they are there
 
 mock_files = setup_mock_files()
 
@@ -50,12 +53,28 @@ with st.sidebar:
     # Download links for mock files 
     col1, col2, col3 = st.columns(3)
     
-    with open('jira_issues.csv', 'rb') as f:
-        col1.download_button("JIRA Issues", f, "jira_issues.csv")
-    with open('defects.csv', 'rb') as f:
-        col2.download_button("Defects Log", f, "defects.csv")
-    with open('raid_log.csv', 'rb') as f:
-        col3.download_button("RAID Log", f, "raid_log.csv")
+    # Ensure files exist before attempting to open them
+    jira_mock_path = 'jira_issues.csv'
+    defects_mock_path = 'defects.csv'
+    raid_mock_path = 'raid_log.csv'
+
+    if os.path.exists(jira_mock_path):
+        with open(jira_mock_path, 'rb') as f:
+            col1.download_button("JIRA Issues", f, "jira_issues.csv")
+    else:
+        col1.info("JIRA mock file not found.")
+
+    if os.path.exists(defects_mock_path):
+        with open(defects_mock_path, 'rb') as f:
+            col2.download_button("Defects Log", f, "defects.csv")
+    else:
+        col2.info("Defects mock file not found.")
+
+    if os.path.exists(raid_mock_path):
+        with open(raid_mock_path, 'rb') as f:
+            col3.download_button("RAID Log", f, "raid_log.csv")
+    else:
+        col3.info("RAID mock file not found.")
 
 
 # Uploaders for the main app
@@ -67,6 +86,7 @@ raid_file = upload_col3.file_uploader("Upload RAID Log CSV", type=['csv'])
 # --- 3. DATA PROCESSING ---
 
 data_ready = False
+metrics_data = {} # Initialize to avoid NameError
 if jira_file and defects_file and raid_file:
     with st.spinner("Processing uploaded data with Pandas..."):
         metrics_data = load_and_process_data(jira_file, defects_file, raid_file)
@@ -111,12 +131,10 @@ if data_ready:
         with st.spinner("⏳ Running 6 Metric Summaries (AI calls in progress)..."):
             for key, name in metric_keys:
                 data_summary = str(metrics_data[key])
-                # Pass API key to AI function
                 summary = get_ai_summary(api_key, name, data_summary) 
                 st.session_state['ai_summaries'][key] = summary
                 
         with st.spinner("🧠 Running Executive Synthesis (Final AI call)..."):
-            # Pass API key to AI function
             exec_summary = get_executive_summary(api_key, metrics_data) 
             st.session_state['ai_summaries']['executive_summary'] = exec_summary
             
@@ -125,30 +143,69 @@ if data_ready:
 
     # --- 5. EXECUTIVE SUMMARY CARD ---
     
-    exec_summary = st.session_state['ai_summaries'].get('executive_summary', 
+    exec_summary_raw = st.session_state['ai_summaries'].get('executive_summary', 
                                                        "Click 'Trigger Full AI Analysis' to generate the leadership synthesis.")
     
-    # Stylized card layout
+    # Check if AI analysis has run and produced a meaningful summary
+    ai_analysis_complete = exec_summary_raw.startswith(('🔴', '🟠', '🟢'))
+    
+    # Pre-process the AI summary to convert Markdown to basic HTML for embedding
+    # This ensures proper rendering within the styled HTML block.
+    # Note: This is a simplified conversion. For complex markdown, use a dedicated library.
+    
+    emoji = ''
+    final_html_content = ''
+
+    if ai_analysis_complete:
+        emoji = exec_summary_raw[0]
+        content_without_emoji = exec_summary_raw[1:].strip()
+        
+        html_content_parts = []
+        
+        # Split by the mandatory headings and process each part
+        sections = content_without_emoji.split('##')
+        for i, section in enumerate(sections):
+            if not section.strip():
+                continue
+            
+            # The first part (after emoji) should be the first heading
+            lines = section.strip().split('\n')
+            
+            heading = lines[0].strip()
+            if heading:
+                html_content_parts.append(f"<h3>{heading.strip()}</h3>") # Use h3 for sub-headings
+            
+            if len(lines) > 1:
+                html_content_parts.append("<ul>")
+                for line in lines[1:]:
+                    if line.strip().startswith('*'):
+                        html_content_parts.append(f"<li>{line.strip()[1:].strip()}</li>")
+                    elif line.strip(): # For any other text that might not be a bullet
+                        html_content_parts.append(f"<p>{line.strip()}</p>") # Wrap in paragraph
+                html_content_parts.append("</ul>")
+                
+        final_html_content = "".join(html_content_parts)
+    else:
+        final_html_content = f"<p>{exec_summary_raw}</p>" # Display the placeholder text as a paragraph
+
+    # Generate the PPT file (simulated) if analysis is complete
+    ppt_file_path = ""
+    if ai_analysis_complete:
+        ppt_file_path = generate_ppt(metrics_data, st.session_state['ai_summaries'])
+
+    # Stylized card layout with embedded HTML content and download button
     st.markdown(f"""
         <div style="padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); margin-bottom: 2rem; border-top: 8px solid #4f46e5; background-color: white;">
-            <h2 style="font-size: 1.875rem; font-weight: 700; color: #4f46e5; margin-bottom: 1rem;">Executive Summary</h2>
-            <div style="color: #4b5563; font-size: 1.125rem; min-height: 60px;">
-                {exec_summary}
+            <h2 style="font-size: 1.875rem; font-weight: 700; color: #4f46e5; margin-bottom: 1rem;">{emoji} Executive Summary</h2>
+            <div style="color: #4b5563; font-size: 1.125rem; min-height: 60px; margin-bottom: 1rem;">
+                {final_html_content}
             </div>
+            {'<div style="text-align: right; margin-top: 1rem;">' if ai_analysis_complete else ''}
+            {f'<a href="data:application/octet-stream;base64,{base64.b64encode(open(ppt_file_path, "rb").read()).decode()}" download="{os.path.basename(ppt_file_path)}" style="background-color: #4f46e5; color: white; padding: 0.75rem 1.5rem; border-radius: 0.375rem; text-decoration: none; font-weight: 600;">⬇️ Download Program Health PPT</a>' if ai_analysis_complete else ''}
+            {'</div>' if ai_analysis_complete else ''}
+            {'<p style="color: #6b7280; text-align: right; font-size: 0.875rem; margin-top: 0.5rem;">Run the AI Analysis first to enable the report download.</p>' if not ai_analysis_complete else ''}
         </div>
         """, unsafe_allow_html=True)
-    
-    # Download Button (after AI analysis)
-    exec_text = st.session_state['ai_summaries'].get('executive_summary', '')
-    if exec_text.startswith('✅') or exec_text.startswith('⚠️') or exec_text.startswith('❌'):
-        
-        file_path = generate_ppt(metrics_data, st.session_state['ai_summaries'])
-        
-        st.button("⬇️ Download Program Health PPT", help=f"Simulates creating and downloading the '{file_path}'.", disabled=False, type="secondary")
-        st.info("The download button is enabled! In a real Streamlit app, this would provide the PPTX file.")
-    else:
-        st.button("⬇️ Download Program Health PPT", help="Run the AI Analysis first to enable the report download.", disabled=True)
-
     
     # --- 6. METRICS CARDS AND CHARTS ---
     

@@ -9,6 +9,8 @@ from report_generator import generate_ppt
 from mock_data import generate_mock_data
 from datetime import date
 
+import base64
+
 # --- 1. CONFIGURATION AND INITIAL SETUP ---
 st.set_page_config(layout="wide", page_title="AI Program Health Dashboard")
 

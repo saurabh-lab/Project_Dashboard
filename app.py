@@ -308,13 +308,13 @@ if data_ready:
         df_comp = pd.DataFrame(metrics_data['completion'])
         
         # --- DEBUGGING COMPLETION DATA ---
-        st.write("DEBUG: df_comp head()")
-        st.dataframe(df_comp.head())
-        st.write("DEBUG: df_comp dtypes")
-        st.dataframe(df_comp.dtypes.to_frame().T)
-        st.write(f"DEBUG: NaN in SprintNumeric (df_comp): {df_comp['SprintNumeric'].isnull().sum()}")
-        st.write(f"DEBUG: NaN in CommittedPoints (df_comp): {df_comp['CommittedPoints'].isnull().sum()}")
-        st.write(f"DEBUG: NaN in CompletedPoints (df_comp): {df_comp['CompletedPoints'].isnull().sum()}")
+        # st.write("DEBUG: df_comp head()")
+        # st.dataframe(df_comp.head())
+        # st.write("DEBUG: df_comp dtypes")
+        # st.dataframe(df_comp.dtypes.to_frame().T)
+        # st.write(f"DEBUG: NaN in SprintNumeric (df_comp): {df_comp['SprintNumeric'].isnull().sum()}")
+        # st.write(f"DEBUG: NaN in CommittedPoints (df_comp): {df_comp['CommittedPoints'].isnull().sum()}")
+        # st.write(f"DEBUG: NaN in CompletedPoints (df_comp): {df_comp['CompletedPoints'].isnull().sum()}")
         # --- END DEBUGGING ---
 
         fig_comp = px.bar(df_comp, x='SprintNumeric', y=['CommittedPoints', 'CompletedPoints'], 
@@ -350,13 +350,13 @@ if data_ready:
         df_den = pd.DataFrame(metrics_data['density'])
         
         # --- DEBUGGING DENSITY DATA ---
-        st.write("DEBUG: df_den head()")
-        st.dataframe(df_den.head())
-        st.write("DEBUG: df_den dtypes")
-        st.dataframe(df_den.dtypes.to_frame().T)
-        st.write(f"DEBUG: NaN in SprintNumeric (df_den): {df_den['SprintNumeric'].isnull().sum()}")
-        st.write(f"DEBUG: NaN in DefectCount (df_den): {df_den['DefectCount'].isnull().sum()}")
-        st.write(f"DEBUG: NaN in StoryCount (df_den): {df_den['StoryCount'].isnull().sum()}")
+        # st.write("DEBUG: df_den head()")
+        # st.dataframe(df_den.head())
+        # st.write("DEBUG: df_den dtypes")
+        # st.dataframe(df_den.dtypes.to_frame().T)
+        # st.write(f"DEBUG: NaN in SprintNumeric (df_den): {df_den['SprintNumeric'].isnull().sum()}")
+        # st.write(f"DEBUG: NaN in DefectCount (df_den): {df_den['DefectCount'].isnull().sum()}")
+        # st.write(f"DEBUG: NaN in StoryCount (df_den): {df_den['StoryCount'].isnull().sum()}")
         # --- END DEBUGGING ---
 
         fig_den = go.Figure(data=[

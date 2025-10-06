@@ -3,6 +3,11 @@ import numpy as np
 import re
 
 def load_and_process_data(jira_file, defects_file, raid_file):
+    """
+    Loads raw CSV data, processes it, and calculates key agile metrics.
+    Ensures Sprints are sorted numerically, handling 'SPRINT-X' format,
+    and output dataframes are correctly sorted for plotting.
+    """
     try:
         df_jira = pd.read_csv(jira_file)
         df_defects = pd.read_csv(defects_file)
@@ -23,7 +28,8 @@ def load_and_process_data(jira_file, defects_file, raid_file):
     )
     df_jira.dropna(subset=['SprintNumeric'], inplace=True)
     df_jira['SprintNumeric'] = df_jira['SprintNumeric'].astype(int)
-    df_jira.sort_values(by='SprintNumeric', inplace=True) 
+    # The sort here applies to df_jira, but subsequent groupbys might lose this order if not careful.
+    df_jira.sort_values(by='SprintNumeric', inplace=True, ignore_index=True) # Ensure initial JIRA sort and reset index
     
     df_jira_stories = df_jira[df_jira['Type'] == 'Story'] 
     df_jira_done = df_jira_stories[df_jira_stories['Status'] == 'Done']
@@ -34,37 +40,42 @@ def load_and_process_data(jira_file, defects_file, raid_file):
         return {"error": f"Defects data is missing required columns: {', '.join(missing_cols)}."}
     df_defects['RaisedIn'] = df_defects['RaisedIn'].astype(str)
 
-    required_raid_cols = ['Type', 'Status', 'Owner', 'TargetDate']
+    required_raid_cols = ['Type', 'Status', 'Owner', 'Target Date']
     if not all(col in df_raid.columns for col in required_raid_cols):
         missing_cols = [col for col in required_raid_cols if col not in df_raid.columns]
         return {"error": f"RAID data is missing required columns: {', '.join(missing_cols)}."}
     
-    df_raid['DueDate'] = pd.to_datetime(df_raid['TargetDate'], errors='coerce')
+    df_raid['DueDate'] = pd.to_datetime(df_raid['Target Date'], errors='coerce')
 
     # --- Get Unique Sorted Sprints ---
-    # We'll generate a dictionary to map SprintNumeric back to SprintID for labels
-    unique_sprints_df = df_jira[['SprintID', 'SprintNumeric']].drop_duplicates().sort_values('SprintNumeric')
+    unique_sprints_df = df_jira[['SprintID', 'SprintNumeric']].drop_duplicates().sort_values('SprintNumeric', ignore_index=True)
     unique_sprints_sorted = unique_sprints_df['SprintID'].tolist()
-    sprint_numeric_to_id_map = dict(zip(unique_sprints_df['SprintNumeric'], unique_sprints_df['SprintID']))
+    # sprint_numeric_to_id_map is now only used in app.py, no longer needed here.
 
 
     # --- METRIC CALCULATION ---
-    # Each metric dataframe will now include 'SprintNumeric'
     # 1. Velocity Trend (StoryPoints per SprintID)
     velocity_trend_data = []
-    for sprint_id, sprint_numeric in unique_sprints_df.itertuples(index=False): # Iterate with numeric too
+    for sprint_id, sprint_numeric in unique_sprints_df.itertuples(index=False):
         completed_points = df_jira_done[df_jira_done['SprintID'] == sprint_id]['StoryPoints'].sum()
         velocity_trend_data.append({'SprintID': sprint_id, 'SprintNumeric': sprint_numeric, 'CompletedPoints': completed_points})
     velocity_trend_df = pd.DataFrame(velocity_trend_data)
-    
+    # --- IMPORTANT: Ensure final DF is sorted before converting ---
+    velocity_trend_df.sort_values(by='SprintNumeric', inplace=True, ignore_index=True)
+
+
     # 2. Sprint Goal Completion (Committed Points vs. Completed Points) ---
     committed_data = []
     for sprint_id, sprint_numeric in unique_sprints_df.itertuples(index=False):
         committed_points = df_jira_stories[df_jira_stories['SprintID'] == sprint_id]['StoryPoints'].sum()
         committed_data.append({'SprintID': sprint_id, 'SprintNumeric': sprint_numeric, 'CommittedPoints': committed_points})
     committed_df = pd.DataFrame(committed_data)
+    # --- IMPORTANT: Ensure final DF is sorted before converting ---
+    committed_df.sort_values(by='SprintNumeric', inplace=True, ignore_index=True)
     
-    completion_trend = pd.merge(committed_df, velocity_trend_df, on=['SprintID', 'SprintNumeric'], how='outer').fillna(0) # Merge on both
+    completion_trend = pd.merge(committed_df, velocity_trend_df, on=['SprintID', 'SprintNumeric'], how='outer').fillna(0)
+    # --- IMPORTANT: Ensure final DF is sorted after merge ---
+    completion_trend.sort_values(by='SprintNumeric', inplace=True, ignore_index=True)
     completion_data_for_return = completion_trend.to_dict('records') 
 
 
@@ -83,8 +94,6 @@ def load_and_process_data(jira_file, defects_file, raid_file):
     # 4. Defect Density (Defects per sprint vs stories) ---
     defect_counts_data = []
     story_counts_data = []
-    # Need to get sprint numeric for defects too for merging
-    defects_sprint_numeric_map = df_jira[['SprintID', 'SprintNumeric']].drop_duplicates().set_index('SprintID')['SprintNumeric'].to_dict()
 
     for sprint_id, sprint_numeric in unique_sprints_df.itertuples(index=False):
         defect_count = df_defects[df_defects['RaisedIn'] == sprint_id].shape[0]
@@ -96,12 +105,13 @@ def load_and_process_data(jira_file, defects_file, raid_file):
     defect_counts_df = pd.DataFrame(defect_counts_data)
     story_counts_df = pd.DataFrame(story_counts_data)
     
-    # Merge on both SprintID and SprintNumeric
     density_data_df = pd.merge(defect_counts_df, story_counts_df, on=['SprintID', 'SprintNumeric'], how='outer').fillna(0)
-    
-    density_data_df.rename(columns={'SprintID': 'RaisedIn'}, inplace=True) # Align with app.py's plotting
+    # --- IMPORTANT: Ensure final DF is sorted after merge ---
+    density_data_df.sort_values(by='SprintNumeric', inplace=True, ignore_index=True)
+
+    density_data_df.rename(columns={'SprintID': 'RaisedIn'}, inplace=True)
     density_data_df['DefectDensity'] = density_data_df['DefectCount'] / density_data_df['StoryCount'].replace(0, np.nan)
-    density_data_for_return = density_data_df[['RaisedIn', 'SprintNumeric', 'DefectCount', 'StoryCount']].to_dict('records') # Include SprintNumeric
+    density_data_for_return = density_data_df[['RaisedIn', 'SprintNumeric', 'DefectCount', 'StoryCount']].to_dict('records')
     
     
     # 5. Defect Stage Distribution (Open Defects by Phase) ---

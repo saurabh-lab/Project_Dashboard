@@ -277,13 +277,13 @@ if data_ready:
         df_vel = pd.DataFrame(metrics_data['velocity'])
         
         # --- DEBUGGING VELOCITY DATA ---
-        st.write("DEBUG: df_vel head()")
-        st.dataframe(df_vel.head())
-        st.write("DEBUG: df_vel dtypes")
-        st.dataframe(df_vel.dtypes.to_frame().T)
-        st.write(f"DEBUG: NaN in SprintNumeric (df_vel): {df_vel['SprintNumeric'].isnull().sum()}")
-        st.write(f"DEBUG: NaN in CompletedPoints (df_vel): {df_vel['CompletedPoints'].isnull().sum()}")
-        st.write(f"DEBUG: NaN in CommittedPoints (df_vel): {df_vel['CommittedPoints'].isnull().sum()}")
+        # st.write("DEBUG: df_vel head()")
+        # st.dataframe(df_vel.head())
+        # st.write("DEBUG: df_vel dtypes")
+        # st.dataframe(df_vel.dtypes.to_frame().T)
+        # st.write(f"DEBUG: NaN in SprintNumeric (df_vel): {df_vel['SprintNumeric'].isnull().sum()}")
+        # st.write(f"DEBUG: NaN in CompletedPoints (df_vel): {df_vel['CompletedPoints'].isnull().sum()}")
+        # st.write(f"DEBUG: NaN in CommittedPoints (df_vel): {df_vel['CommittedPoints'].isnull().sum()}")
         # --- END DEBUGGING ---
 
         fig_vel = px.line(df_vel, x='SprintNumeric', y='CompletedPoints', 

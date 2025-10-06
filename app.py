@@ -11,22 +11,27 @@ from datetime import date
 
 import base64 
 import re 
-import numpy as np # Added for np.nan checks
 
 # --- 1. CONFIGURATION AND INITIAL SETUP ---
 st.set_page_config(layout="wide", page_title="AI Program Health Dashboard")
 
-# st.info("App Start: Config set.") 
+# Initialize session state variables if they don't exist
+if 'data_ready' not in st.session_state:
+    st.session_state['data_ready'] = False
+if 'metrics_data' not in st.session_state:
+    st.session_state['metrics_data'] = {}
+if 'gemini_api_key' not in st.session_state:
+    st.session_state['gemini_api_key'] = ''
+if 'ai_summaries' not in st.session_state:
+    st.session_state['ai_summaries'] = {}
 
 # Ensure mock data files exist for quick testing
 @st.cache_resource
 def setup_mock_files():
-   # st.info("Setup Mock Files: Checking file existence.") 
+    """Generates mock files if they don't exist and provides download links."""
     mock_file_names = ['jira_issues.csv', 'defects.csv', 'raid_log.csv']
     if not all(os.path.exists(f) for f in mock_file_names):
-      #  st.info("Setup Mock Files: Generating new mock data.") 
         return generate_mock_data()
-   # st.info("Setup Mock Files: Mock data already exists.") 
     return mock_file_names 
 
 mock_files = setup_mock_files()
@@ -36,14 +41,9 @@ mock_files = setup_mock_files()
 st.title("🤖 AI-Powered Program Health Dashboard")
 st.markdown("Upload your JIRA, Defects, and RAID logs to generate analysis.")
 
-# st.info("After Title and Upload Prompts.") 
-
 # --- API Key Input ---
 with st.sidebar:
     st.header("🔑 Gemini API Key")
-    if 'gemini_api_key' not in st.session_state:
-        st.session_state['gemini_api_key'] = ''
-
     st.session_state['gemini_api_key'] = st.text_input(
         "Enter your Gemini API Key:", 
         type="password",
@@ -64,6 +64,8 @@ with st.sidebar:
     defects_mock_path = 'defects.csv'
     raid_mock_path = 'raid_log.csv'
 
+    # Download buttons for mock data
+    # (No changes needed here, as these are just file downloads)
     if os.path.exists(jira_mock_path):
         with open(jira_mock_path, 'rb') as f:
             col1.download_button("JIRA Issues", f, "jira_issues.csv")
@@ -91,40 +93,44 @@ raid_file = upload_col3.file_uploader("Upload RAID Log CSV", type=['csv'])
 
 # --- 3. DATA PROCESSING ---
 
-data_ready = False
-metrics_data = {} 
-if jira_file and defects_file and raid_file:
-    # st.info("Data Processing: User files uploaded.") 
-    with st.spinner("Processing uploaded data with Pandas..."):
-        metrics_data = load_and_process_data(jira_file, defects_file, raid_file)
+# Check if data is already loaded in session state (from a previous run)
+if not st.session_state['data_ready']: # Only attempt to load if not already loaded
+    if jira_file and defects_file and raid_file:
+        with st.spinner("Processing uploaded data with Pandas..."):
+            temp_metrics_data = load_and_process_data(jira_file, defects_file, raid_file)
+        
+        if "error" in temp_metrics_data:
+            st.error(f"Data Processing Error: {temp_metrics_data['error']}")
+            st.session_state['data_ready'] = False # Ensure state is explicitly false on error
+        else:
+            st.session_state['metrics_data'] = temp_metrics_data
+            st.session_state['data_ready'] = True
+    elif st.button("📊 Use Mock Data (Default)") and all(os.path.exists(f) for f in mock_files):
+        with st.spinner("Processing mock data with Pandas..."):
+            temp_metrics_data = load_and_process_data('jira_issues.csv', 'defects.csv', 'raid_log.csv') 
+        if "error" in temp_metrics_data:
+            st.error(f"Mock Data Processing Error: {temp_metrics_data['error']}")
+            st.session_state['data_ready'] = False # Ensure state is explicitly false on error
+        else:
+            st.session_state['metrics_data'] = temp_metrics_data
+            st.session_state['data_ready'] = True
     
-    if "error" in metrics_data:
-        st.error(f"Data Processing Error: {metrics_data['error']}")
-    else:
-        data_ready = True
-elif st.button("📊 Use Mock Data (Default)") and all(os.path.exists(f) for f in mock_files):
-    # st.info("Data Processing: Using Mock Data.") 
-    with st.spinner("Processing mock data with Pandas..."):
-        metrics_data = load_and_process_data('jira_issues.csv', 'defects.csv', 'raid_log.csv') 
-    if "error" in metrics_data:
-        st.error(f"Mock Data Processing Error: {metrics_data['error']}")
-    else:
-        data_ready = True
-    
-# st.info(f"Data Processing Complete. Data Ready: {data_ready}") 
+# Now use st.session_state['data_ready'] and st.session_state['metrics_data']
+# everywhere else in the script
+metrics_data = st.session_state['metrics_data'] # Alias for convenience
 
 # --- 4. AI ANALYSIS AND REPORTING ---
 
-if data_ready:
+if st.session_state['data_ready']: # Use session state for data_ready
     st.divider()
     
-    if 'ai_summaries' not in st.session_state:
-        st.session_state['ai_summaries'] = {}
-        
-    if st.button("🧠 Trigger Full AI Analysis & Report Generation", type="primary", disabled=not st.session_state['gemini_api_key']):
-        # st.info("AI Analysis Triggered!") 
+    # Check if AI analysis has already been performed in this session
+    ai_analysis_already_run = st.session_state['ai_summaries'].get('executive_summary', '') not in ["", "Click 'Trigger Full AI Analysis' to generate the leadership synthesis."]
+
+    if st.button("🧠 Trigger Full AI Analysis & Report Generation", type="primary", 
+                 disabled=not st.session_state['gemini_api_key']): # Button is only enabled if API key is present
         api_key = st.session_state['gemini_api_key']
-        st.session_state['ai_summaries'] = {} 
+        st.session_state['ai_summaries'] = {} # Reset summaries before re-running
         
         metric_keys = [
             ("velocity", "Velocity Trend"), 
@@ -147,20 +153,17 @@ if data_ready:
             
         st.success("✅ All 7 AI Summaries complete!")
 
-    # st.info("After AI Analysis Button Check.") 
-
     # --- 5. EXECUTIVE SUMMARY CARD ---
     
     exec_summary_raw = st.session_state['ai_summaries'].get('executive_summary', 
                                                        "Click 'Trigger Full AI Analysis' to generate the leadership synthesis.")
     
-    ai_analysis_complete = exec_summary_raw.startswith(('🔴', '🟠', '🟢'))
+    ai_analysis_complete = exec_summary_raw not in ["", "Click 'Trigger Full AI Analysis' to generate the leadership synthesis."]
     
     emoji = ''
     final_html_content = ''
 
     if ai_analysis_complete:
-        # st.info("Executive Summary: AI analysis complete, processing content.") 
         emoji = exec_summary_raw[0]
         content_without_emoji = exec_summary_raw[1:].strip()
         
@@ -175,15 +178,14 @@ if data_ready:
             
             heading = lines[0].strip()
             if heading:
-
-                html_content_parts.append(f"<h3>{heading.replace('**', '').strip()}</h3>")
+                html_content_parts.append(f"<h3>{heading.replace('**', '').strip()}</h3>") 
             
             if len(lines) > 1:
                 html_content_parts.append("<ul>")
                 for line in lines[1:]:
                     if line.strip().startswith('*'):
                         list_item_content = line.strip()[1:].strip()
-                        list_item_content = list_item_content.replace('**', '')
+                        list_item_content = list_item_content.replace('**', '') 
                         html_content_parts.append(f"<li>{list_item_content}</li>")
                     elif line.strip(): 
                         html_content_parts.append(f"<p>{line.strip()}</p>")
@@ -191,18 +193,20 @@ if data_ready:
                 
         final_html_content = "".join(html_content_parts)
     else:
-        # st.info("Executive Summary: AI analysis not yet complete, showing placeholder.") 
         final_html_content = f"<p>{exec_summary_raw}</p>" 
 
     ppt_file_path = ""
-    if ai_analysis_complete:
-        # st.info("Attempting to generate PPT.") 
+    # Only try to generate PPT if AI analysis is complete AND metrics_data is available
+    if ai_analysis_complete and st.session_state['data_ready']: 
         try:
-            ppt_file_path = generate_ppt(metrics_data, st.session_state['ai_summaries'])
-            # st.info(f"PPT generated at: {ppt_file_path}") 
+            # Pass metrics_data from session state
+            ppt_file_path = generate_ppt(st.session_state['metrics_data'], st.session_state['ai_summaries'])
         except Exception as e:
             st.error(f"Error generating PPT: {e}")
-            ai_analysis_complete = False 
+            # Do not set ai_analysis_complete to False, as AI analysis itself was successful.
+            # Just indicate PPT generation failed.
+            ppt_file_path = "" # Reset path if generation failed
+
 
     st.markdown(f"""
         <div id="executive_summary_card_top" style="padding: 1.5rem; border-radius: 0.75rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); margin-bottom: 0rem; border-top: 8px solid #4f46e5; background-color: white;">
@@ -226,7 +230,7 @@ if data_ready:
                 text-align: right;">
             """, unsafe_allow_html=True)
             
-        if ai_analysis_complete and os.path.exists(ppt_file_path):
+        if ai_analysis_complete and ppt_file_path and os.path.exists(ppt_file_path): # Check ppt_file_path and existence
             try:
                 with open(ppt_file_path, "rb") as f:
                     st.download_button(
@@ -247,83 +251,50 @@ if data_ready:
 
         st.markdown("</div>", unsafe_allow_html=True) 
 
-    # st.info("After Executive Summary Card.") 
-
     # --- 6. METRICS CARDS AND CHARTS ---
     
     st.header("Programmatic Health Metrics")
 
-    # --- PREPARE SPRINT ORDER & LABELS FOR PLOTLY ---
-    temp_df_for_sprints = pd.DataFrame(metrics_data['velocity'])
-    sprint_numeric_to_id_map = {}
-    if not temp_df_for_sprints.empty and 'SprintID' in temp_df_for_sprints.columns and 'SprintNumeric' in temp_df_for_sprints.columns:
-        unique_numeric_sprints = sorted(temp_df_for_sprints['SprintNumeric'].unique())
-        for num_sprint in unique_numeric_sprints:
-            sprint_id = temp_df_for_sprints[temp_df_for_sprints['SprintNumeric'] == num_sprint]['SprintID'].iloc[0]
-            sprint_numeric_to_id_map[num_sprint] = sprint_id
+    # --- PREPARE SPRINT ORDER FOR PLOTLY ---
+    # Use metrics_data from session state
+    temp_df_for_sprints = pd.DataFrame(st.session_state['metrics_data']['velocity']) 
+    ordered_sprints_for_plotly = []
+    if not temp_df_for_sprints.empty and 'SprintID' in temp_df_for_sprints.columns:
+        all_sprint_ids = temp_df_for_sprints['SprintID'].unique()
+        ordered_sprints_for_plotly = sorted(
+            all_sprint_ids, 
+            key=lambda x: int(re.search(r'\d+', str(x)).group()) if pd.notna(x) and re.search(r'\d+', str(x)) else 0
+        )
     
-    # st.info(f"Plotly Numeric to ID Map: {sprint_numeric_to_id_map}") 
-
-
     # 6.1 Velocity Trend & Completion (Two charts in one row)
     col1, col2 = st.columns(2)
     
     # Metric 1: Velocity Trend (Line Chart)
     with col1:
         st.subheader("1. Velocity Trend (Completed Story Points/Sprint)")
-        df_vel = pd.DataFrame(metrics_data['velocity'])
-        
-        # --- DEBUGGING VELOCITY DATA ---
-        # st.write("DEBUG: df_vel head()")
-        # st.dataframe(df_vel.head())
-        # st.write("DEBUG: df_vel dtypes")
-        # st.dataframe(df_vel.dtypes.to_frame().T)
-        # st.write(f"DEBUG: NaN in SprintNumeric (df_vel): {df_vel['SprintNumeric'].isnull().sum()}")
-        # st.write(f"DEBUG: NaN in CompletedPoints (df_vel): {df_vel['CompletedPoints'].isnull().sum()}")
-        # st.write(f"DEBUG: NaN in CommittedPoints (df_vel): {df_vel['CommittedPoints'].isnull().sum()}")
-        # --- END DEBUGGING ---
-
-        fig_vel = px.line(df_vel, x='SprintNumeric', y='CompletedPoints', 
+        df_vel = pd.DataFrame(st.session_state['metrics_data']['velocity'])
+        fig_vel = px.line(df_vel, x='SprintID', y='CompletedPoints', 
                          title='Completed Story Points Over Time', markers=True,
                          color_discrete_sequence=['#1e40af'])
-        fig_vel.add_trace(go.Scatter(x=df_vel['SprintNumeric'], y=df_vel['CommittedPoints'], 
+        fig_vel.add_trace(go.Scatter(x=df_vel['SprintID'], y=df_vel['CommittedPoints'],
                                     mode='lines', name='Committed Points', line=dict(dash='dot', color='#ef4444')))
         
-        if sprint_numeric_to_id_map:
-            fig_vel.update_xaxes(
-                tickvals=list(sprint_numeric_to_id_map.keys()), 
-                ticktext=list(sprint_numeric_to_id_map.values()),
-                dtick=1 # Explicitly set tick interval to 1 to ensure all integer sprints are shown
-            )
+        if ordered_sprints_for_plotly:
+            fig_vel.update_xaxes(categoryorder='array', categoryarray=ordered_sprints_for_plotly) 
         
         st.plotly_chart(fig_vel, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('velocity', 'Awaiting Analysis...')}")
 
-    # Metric 2: Sprint Goal Completion (Bar Chart) 
+    # Metric 2: Sprint Goal Completion (Bar Chart)
     with col2:
         st.subheader("2. Sprint Goal Completion (Committed vs. Completed)")
-        df_comp = pd.DataFrame(metrics_data['completion'])
-        
-        # --- DEBUGGING COMPLETION DATA ---
-        # st.write("DEBUG: df_comp head()")
-        # st.dataframe(df_comp.head())
-        # st.write("DEBUG: df_comp dtypes")
-        # st.dataframe(df_comp.dtypes.to_frame().T)
-        # st.write(f"DEBUG: NaN in SprintNumeric (df_comp): {df_comp['SprintNumeric'].isnull().sum()}")
-        # st.write(f"DEBUG: NaN in CommittedPoints (df_comp): {df_comp['CommittedPoints'].isnull().sum()}")
-        # st.write(f"DEBUG: NaN in CompletedPoints (df_comp): {df_comp['CompletedPoints'].isnull().sum()}")
-        # --- END DEBUGGING ---
-
-        fig_comp = px.bar(df_comp, x='SprintNumeric', y=['CommittedPoints', 'CompletedPoints'], 
+        df_comp = pd.DataFrame(st.session_state['metrics_data']['completion'])
+        fig_comp = px.bar(df_comp, x='SprintID', y=['CommittedPoints', 'CompletedPoints'], 
                          title='Committed vs. Completed Points', barmode='group',
                          color_discrete_map={'CommittedPoints': '#1d4ed8', 'CompletedPoints': '#34d399'})
         
-        if sprint_numeric_to_id_map:
-            fig_comp.update_xaxes(
-                tickvals=list(sprint_numeric_to_id_map.keys()), 
-                ticktext=list(sprint_numeric_to_id_map.values()),
-                dtick=1 # Explicitly set tick interval to 1
-            )
+        if ordered_sprints_for_plotly:
+            fig_comp.update_xaxes(categoryorder='array', categoryarray=ordered_sprints_for_plotly)
             
         st.plotly_chart(fig_comp, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('completion', 'Awaiting Analysis...')}")
@@ -331,34 +302,24 @@ if data_ready:
     # 6.2 Capacity Utilization & Defect Density (Two charts in one row)
     col3, col4 = st.columns(2)
 
-    # Metric 3: Capacity Utilization (Bar Chart) - X-axis is Assignee, no change needed.
+    # Metric 3: Capacity Utilization (Bar Chart) 
     with col3:
         st.subheader("3. Capacity Utilization (Assignee Load - Last 5 Sprints)")
-        df_cap = pd.DataFrame(metrics_data['capacity'])
+        df_cap = pd.DataFrame(st.session_state['metrics_data']['capacity'])
         fig_cap = px.bar(df_cap, x='Assignee', y=['Load', 'AssumedCapacity'], 
                          title='Team Member Load vs. Capacity', barmode='group',
                          color_discrete_map={'Load': '#f97316', 'AssumedCapacity': '#d1d5db'})
         st.plotly_chart(fig_cap, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('capacity', 'Awaiting Analysis...')}")
 
-    # Metric 4: Defect Density (Line/Bar Chart) - X-axis is RaisedIn (SprintID)
+    # Metric 4: Defect Density (Bar Chart) - X-axis is RaisedIn (SprintID)
     with col4:
         st.subheader("4. Defect Density (Defects per Sprint vs. Stories)")
-        df_den = pd.DataFrame(metrics_data['density'])
+        df_den = pd.DataFrame(st.session_state['metrics_data']['density'])
         
-        # --- DEBUGGING DENSITY DATA ---
-        # st.write("DEBUG: df_den head()")
-        # st.dataframe(df_den.head())
-        # st.write("DEBUG: df_den dtypes")
-        # st.dataframe(df_den.dtypes.to_frame().T)
-        # st.write(f"DEBUG: NaN in SprintNumeric (df_den): {df_den['SprintNumeric'].isnull().sum()}")
-        # st.write(f"DEBUG: NaN in DefectCount (df_den): {df_den['DefectCount'].isnull().sum()}")
-        # st.write(f"DEBUG: NaN in StoryCount (df_den): {df_den['StoryCount'].isnull().sum()}")
-        # --- END DEBUGGING ---
-
         fig_den = go.Figure(data=[
-            go.Bar(name='Defect Count', x=df_den['SprintNumeric'], y=df_den['DefectCount'], yaxis='y1', marker_color='#ef4444'),
-            go.Scatter(name='Story Count', x=df_den['SprintNumeric'], y=df_den['StoryCount'], yaxis='y2', mode='lines+markers', marker_color='#059669')
+            go.Bar(name='Defect Count', x=df_den['RaisedIn'], y=df_den['DefectCount'], yaxis='y1', marker_color='#ef4444'),
+            go.Scatter(name='Story Count', x=df_den['RaisedIn'], y=df_den['StoryCount'], yaxis='y2', mode='lines+markers', marker_color='#059669')
         ])
 
         fig_den.update_layout(
@@ -368,12 +329,8 @@ if data_ready:
             yaxis2=dict(title='Story Count', side='right', overlaying='y', showgrid=False),
             legend=dict(x=0.01, y=0.99)
         )
-        if sprint_numeric_to_id_map: 
-            fig_den.update_xaxes(
-                tickvals=list(sprint_numeric_to_id_map.keys()), 
-                ticktext=list(sprint_numeric_to_id_map.values()),
-                dtick=1 # Explicitly set tick interval to 1
-            )
+        if ordered_sprints_for_plotly: 
+            fig_den.update_xaxes(categoryorder='array', categoryarray=ordered_sprints_for_plotly) 
         
         st.plotly_chart(fig_den, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('density', 'Awaiting Analysis...')}")
@@ -381,20 +338,20 @@ if data_ready:
     # 6.3 Defect Distribution & RAID Summary (Two components in one row)
     col5, col6 = st.columns(2)
     
-    # Metric 5: Defect Stage Distribution (Pie Chart) - No Sprint X-axis
+    # Metric 5: Defect Stage Distribution (Pie Chart) 
     with col5:
         st.subheader("5. Defect Stage Distribution (Open Defects by Phase)")
-        df_stage = pd.DataFrame(metrics_data['stage'])
+        df_stage = pd.DataFrame(st.session_state['metrics_data']['stage'])
         fig_stage = px.pie(df_stage, values='Count', names='Phase', 
                            title='Open Defects by Phase',
                            color_discrete_sequence=px.colors.sequential.RdBu)
         st.plotly_chart(fig_stage, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('stage', 'Awaiting Analysis...')}")
 
-    # Metric 6: RAID Summary (Table) - No Sprint X-axis
+    # Metric 6: RAID Summary (Table) 
     with col6:
         st.subheader("6. RAID Summary (Open Items)")
-        df_raid = pd.DataFrame(metrics_data['raid'])
+        df_raid = pd.DataFrame(st.session_state['metrics_data']['raid'])
         
         def color_status(val):
             if '⚠️' in val or '🚨' in val:
@@ -406,5 +363,3 @@ if data_ready:
         st.dataframe(df_raid.style.applymap(color_status, subset=['Status']), 
                      hide_index=True, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('raid', 'Awaiting Analysis...')}")
-
-    # st.info("End of App Execution Path.")

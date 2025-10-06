@@ -46,14 +46,14 @@ def load_and_process_data(jira_file, defects_file, raid_file):
     df_defects['RaisedIn'] = df_defects['RaisedIn'].astype(str)
 
     # RAID Data
-    required_raid_cols = ['Type', 'Status', 'Owner', 'Target Date'] # <--- CORRECTED: 'Target Date'
+    required_raid_cols = ['Type', 'Status', 'Owner', 'TargetDate'] # <--- CORRECTED: 'Target Date'
     if not all(col in df_raid.columns for col in required_raid_cols):
         missing_cols = [col for col in required_raid_cols if col not in df_raid.columns]
         return {"error": f"RAID data is missing required columns: {', '.join(missing_cols)}."}
     
-    # Corrected: Use 'Target Date' and then rename it to 'DueDate' internally for consistent code
-    df_raid['DueDate'] = pd.to_datetime(df_raid['Target Date'], errors='coerce') # <--- CORRECTED
-    # Now, `df_raid` has a 'DueDate' column derived from 'Target Date'
+    # Corrected: Use 'TargetDate' and then rename it to 'DueDate' internally for consistent code
+    df_raid['DueDate'] = pd.to_datetime(df_raid['TargetDate'], errors='coerce') # <--- CORRECTED
+    # Now, `df_raid` has a 'DueDate' column derived from 'TargetDate'
 
 
     # --- Get Unique Sorted Sprints ---
@@ -128,15 +128,15 @@ def load_and_process_data(jira_file, defects_file, raid_file):
     raid_data_df = pd.merge(raid_summary_df, raid_open_df, on='Type', how='left').fillna(0)
     raid_data_df['Open'] = raid_data_df['Open'].astype(int)
     
-    # Corrected: Use the internally created 'DueDate' for logic, but 'Target Date' from original file
+    # Corrected: Use the internally created 'DueDate' for logic, but 'TargetDate' from original file
     # The get_raid_status_display function needs the 'DueDate' column that we created
-    # on the df_raid dataframe itself after reading 'Target Date'.
+    # on the df_raid dataframe itself after reading 'TargetDate'.
     
     # Custom status mapping for display with emojis
     def get_raid_status_display(row):
         if 'Open' in str(row['Status']) or 'New' in str(row['Status']): # Ensure string comparison
             return '⚠️ Open'
-        # Use the 'DueDate' column we just created from 'Target Date'
+        # Use the 'DueDate' column we just created from 'TargetDate'
         elif pd.notna(row['DueDate']) and row['DueDate'] < pd.to_datetime('today'):
             return '🚨 Overdue'
         return '🟢 Active' # Default or other active status

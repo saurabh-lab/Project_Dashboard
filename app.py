@@ -16,17 +16,17 @@ import numpy as np # Added for np.nan checks
 # --- 1. CONFIGURATION AND INITIAL SETUP ---
 st.set_page_config(layout="wide", page_title="AI Program Health Dashboard")
 
-st.info("App Start: Config set.") 
+# st.info("App Start: Config set.") 
 
 # Ensure mock data files exist for quick testing
 @st.cache_resource
 def setup_mock_files():
-    st.info("Setup Mock Files: Checking file existence.") 
+   # st.info("Setup Mock Files: Checking file existence.") 
     mock_file_names = ['jira_issues.csv', 'defects.csv', 'raid_log.csv']
     if not all(os.path.exists(f) for f in mock_file_names):
-        st.info("Setup Mock Files: Generating new mock data.") 
+      #  st.info("Setup Mock Files: Generating new mock data.") 
         return generate_mock_data()
-    st.info("Setup Mock Files: Mock data already exists.") 
+   # st.info("Setup Mock Files: Mock data already exists.") 
     return mock_file_names 
 
 mock_files = setup_mock_files()
@@ -36,7 +36,7 @@ mock_files = setup_mock_files()
 st.title("🤖 AI-Powered Program Health Dashboard")
 st.markdown("Upload your JIRA, Defects, and RAID logs to generate analysis.")
 
-st.info("After Title and Upload Prompts.") 
+# st.info("After Title and Upload Prompts.") 
 
 # --- API Key Input ---
 with st.sidebar:
@@ -94,7 +94,7 @@ raid_file = upload_col3.file_uploader("Upload RAID Log CSV", type=['csv'])
 data_ready = False
 metrics_data = {} 
 if jira_file and defects_file and raid_file:
-    st.info("Data Processing: User files uploaded.") 
+    # st.info("Data Processing: User files uploaded.") 
     with st.spinner("Processing uploaded data with Pandas..."):
         metrics_data = load_and_process_data(jira_file, defects_file, raid_file)
     
@@ -103,7 +103,7 @@ if jira_file and defects_file and raid_file:
     else:
         data_ready = True
 elif st.button("📊 Use Mock Data (Default)") and all(os.path.exists(f) for f in mock_files):
-    st.info("Data Processing: Using Mock Data.") 
+    # st.info("Data Processing: Using Mock Data.") 
     with st.spinner("Processing mock data with Pandas..."):
         metrics_data = load_and_process_data('jira_issues.csv', 'defects.csv', 'raid_log.csv') 
     if "error" in metrics_data:
@@ -111,7 +111,7 @@ elif st.button("📊 Use Mock Data (Default)") and all(os.path.exists(f) for f i
     else:
         data_ready = True
     
-st.info(f"Data Processing Complete. Data Ready: {data_ready}") 
+# st.info(f"Data Processing Complete. Data Ready: {data_ready}") 
 
 # --- 4. AI ANALYSIS AND REPORTING ---
 
@@ -122,7 +122,7 @@ if data_ready:
         st.session_state['ai_summaries'] = {}
         
     if st.button("🧠 Trigger Full AI Analysis & Report Generation", type="primary", disabled=not st.session_state['gemini_api_key']):
-        st.info("AI Analysis Triggered!") 
+        # st.info("AI Analysis Triggered!") 
         api_key = st.session_state['gemini_api_key']
         st.session_state['ai_summaries'] = {} 
         
@@ -147,7 +147,7 @@ if data_ready:
             
         st.success("✅ All 7 AI Summaries complete!")
 
-    st.info("After AI Analysis Button Check.") 
+    # st.info("After AI Analysis Button Check.") 
 
     # --- 5. EXECUTIVE SUMMARY CARD ---
     
@@ -160,7 +160,7 @@ if data_ready:
     final_html_content = ''
 
     if ai_analysis_complete:
-        st.info("Executive Summary: AI analysis complete, processing content.") 
+        # st.info("Executive Summary: AI analysis complete, processing content.") 
         emoji = exec_summary_raw[0]
         content_without_emoji = exec_summary_raw[1:].strip()
         
@@ -194,15 +194,15 @@ if data_ready:
                 
         final_html_content = "".join(html_content_parts)
     else:
-        st.info("Executive Summary: AI analysis not yet complete, showing placeholder.") 
+        # st.info("Executive Summary: AI analysis not yet complete, showing placeholder.") 
         final_html_content = f"<p>{exec_summary_raw}</p>" 
 
     ppt_file_path = ""
     if ai_analysis_complete:
-        st.info("Attempting to generate PPT.") 
+        # st.info("Attempting to generate PPT.") 
         try:
             ppt_file_path = generate_ppt(metrics_data, st.session_state['ai_summaries'])
-            st.info(f"PPT generated at: {ppt_file_path}") 
+            # st.info(f"PPT generated at: {ppt_file_path}") 
         except Exception as e:
             st.error(f"Error generating PPT: {e}")
             ai_analysis_complete = False 
@@ -250,7 +250,7 @@ if data_ready:
 
         st.markdown("</div>", unsafe_allow_html=True) 
 
-    st.info("After Executive Summary Card.") 
+    # st.info("After Executive Summary Card.") 
 
     # --- 6. METRICS CARDS AND CHARTS ---
     
@@ -265,7 +265,7 @@ if data_ready:
             sprint_id = temp_df_for_sprints[temp_df_for_sprints['SprintNumeric'] == num_sprint]['SprintID'].iloc[0]
             sprint_numeric_to_id_map[num_sprint] = sprint_id
     
-    st.info(f"Plotly Numeric to ID Map: {sprint_numeric_to_id_map}") 
+    # st.info(f"Plotly Numeric to ID Map: {sprint_numeric_to_id_map}") 
 
 
     # 6.1 Velocity Trend & Completion (Two charts in one row)
@@ -410,4 +410,4 @@ if data_ready:
                      hide_index=True, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('raid', 'Awaiting Analysis...')}")
 
-    st.info("End of App Execution Path.")
+    # st.info("End of App Execution Path.")

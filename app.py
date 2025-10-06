@@ -10,23 +10,22 @@ from mock_data import generate_mock_data
 from datetime import date 
 
 import base64 
-import re # IMPORTANT: Added for regex to sort sprints numerically for Plotly
+import re 
 
 # --- 1. CONFIGURATION AND INITIAL SETUP ---
 st.set_page_config(layout="wide", page_title="AI Program Health Dashboard")
 
-st.info("App Start: Config set.") # Debug message
+st.info("App Start: Config set.") 
 
 # Ensure mock data files exist for quick testing
 @st.cache_resource
 def setup_mock_files():
-    """Generates mock files if they don't exist and provides download links."""
-    st.info("Setup Mock Files: Checking file existence.") # Debug message
+    st.info("Setup Mock Files: Checking file existence.") 
     mock_file_names = ['jira_issues.csv', 'defects.csv', 'raid_log.csv']
     if not all(os.path.exists(f) for f in mock_file_names):
-        st.info("Setup Mock Files: Generating new mock data.") # Debug message
+        st.info("Setup Mock Files: Generating new mock data.") 
         return generate_mock_data()
-    st.info("Setup Mock Files: Mock data already exists.") # Debug message
+    st.info("Setup Mock Files: Mock data already exists.") 
     return mock_file_names 
 
 mock_files = setup_mock_files()
@@ -36,7 +35,7 @@ mock_files = setup_mock_files()
 st.title("🤖 AI-Powered Program Health Dashboard")
 st.markdown("Upload your JIRA, Defects, and RAID logs to generate analysis.")
 
-st.info("After Title and Upload Prompts.") # Debug message
+st.info("After Title and Upload Prompts.") 
 
 # --- API Key Input ---
 with st.sidebar:
@@ -256,16 +255,21 @@ if data_ready:
     
     st.header("Programmatic Health Metrics")
 
-    # --- PREPARE SPRINT ORDER FOR PLOTLY ---
+    # --- PREPARE SPRINT ORDER & LABELS FOR PLOTLY ---
+    # This block is simplified as we now have SprintNumeric in the dataframes
     temp_df_for_sprints = pd.DataFrame(metrics_data['velocity'])
-    ordered_sprints_for_plotly = []
-    if not temp_df_for_sprints.empty and 'SprintID' in temp_df_for_sprints.columns:
-        all_sprint_ids = temp_df_for_sprints['SprintID'].unique()
-        ordered_sprints_for_plotly = sorted(
-            all_sprint_ids, 
-            key=lambda x: int(re.search(r'\d+', str(x)).group()) if pd.notna(x) and re.search(r'\d+', str(x)) else 0
-        )
-    st.info(f"Plotly Sprint Order: {ordered_sprints_for_plotly}") 
+    # Create a mapping from numeric to ID for x-axis tick labels
+    sprint_numeric_to_id_map = {}
+    if not temp_df_for_sprints.empty and 'SprintID' in temp_df_for_sprints.columns and 'SprintNumeric' in temp_df_for_sprints.columns:
+        # Get unique numeric sprints, sorted
+        unique_numeric_sprints = sorted(temp_df_for_sprints['SprintNumeric'].unique())
+        # Create a mapping dictionary for tick labels
+        for num_sprint in unique_numeric_sprints:
+            # Find the corresponding SprintID for this numeric sprint
+            sprint_id = temp_df_for_sprints[temp_df_for_sprints['SprintNumeric'] == num_sprint]['SprintID'].iloc[0]
+            sprint_numeric_to_id_map[num_sprint] = sprint_id
+    
+    st.info(f"Plotly Numeric to ID Map: {sprint_numeric_to_id_map}") 
 
 
     # 6.1 Velocity Trend & Completion (Two charts in one row)
@@ -275,28 +279,38 @@ if data_ready:
     with col1:
         st.subheader("1. Velocity Trend (Completed Story Points/Sprint)")
         df_vel = pd.DataFrame(metrics_data['velocity'])
-        fig_vel = px.line(df_vel, x='SprintID', y='CompletedPoints', 
+        # Use SprintNumeric for x-axis, Plotly will draw a continuous line
+        fig_vel = px.line(df_vel, x='SprintNumeric', y='CompletedPoints', 
                          title='Completed Story Points Over Time', markers=True,
                          color_discrete_sequence=['#1e40af'])
-        fig_vel.add_trace(go.Scatter(x=df_vel['SprintID'], y=df_vel['CommittedPoints'],
+        fig_vel.add_trace(go.Scatter(x=df_vel['SprintNumeric'], y=df_vel['CommittedPoints'], # Use SprintNumeric here too
                                     mode='lines', name='Committed Points', line=dict(dash='dot', color='#ef4444')))
         
-        if ordered_sprints_for_plotly:
-            fig_vel.update_xaxes(categoryorder='array', categoryarray=ordered_sprints_for_plotly) 
+        # --- IMPORTANT: Custom X-axis tick labels to show SprintID ---
+        if sprint_numeric_to_id_map:
+            fig_vel.update_xaxes(
+                tickvals=list(sprint_numeric_to_id_map.keys()), # The numeric positions
+                ticktext=list(sprint_numeric_to_id_map.values()) # The categorical labels
+            )
         
         st.plotly_chart(fig_vel, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('velocity', 'Awaiting Analysis...')}")
 
-    # Metric 2: Sprint Goal Completion (Bar Chart)
+    # Metric 2: Sprint Goal Completion (Bar Chart) - This should connect fine with numeric X
     with col2:
         st.subheader("2. Sprint Goal Completion (Committed vs. Completed)")
         df_comp = pd.DataFrame(metrics_data['completion'])
-        fig_comp = px.bar(df_comp, x='SprintID', y=['CommittedPoints', 'CompletedPoints'], 
+        # Use SprintNumeric for x-axis
+        fig_comp = px.bar(df_comp, x='SprintNumeric', y=['CommittedPoints', 'CompletedPoints'], 
                          title='Committed vs. Completed Points', barmode='group',
                          color_discrete_map={'CommittedPoints': '#1d4ed8', 'CompletedPoints': '#34d399'})
         
-        if ordered_sprints_for_plotly:
-            fig_comp.update_xaxes(categoryorder='array', categoryarray=ordered_sprints_for_plotly)
+        # --- IMPORTANT: Custom X-axis tick labels to show SprintID ---
+        if sprint_numeric_to_id_map:
+            fig_comp.update_xaxes(
+                tickvals=list(sprint_numeric_to_id_map.keys()), # The numeric positions
+                ticktext=list(sprint_numeric_to_id_map.values()) # The categorical labels
+            )
             
         st.plotly_chart(fig_comp, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('completion', 'Awaiting Analysis...')}")
@@ -304,7 +318,7 @@ if data_ready:
     # 6.2 Capacity Utilization & Defect Density (Two charts in one row)
     col3, col4 = st.columns(2)
 
-    # Metric 3: Capacity Utilization (Bar Chart) 
+    # Metric 3: Capacity Utilization (Bar Chart) - X-axis is Assignee, no change needed.
     with col3:
         st.subheader("3. Capacity Utilization (Assignee Load - Last 5 Sprints)")
         df_cap = pd.DataFrame(metrics_data['capacity'])
@@ -314,14 +328,15 @@ if data_ready:
         st.plotly_chart(fig_cap, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('capacity', 'Awaiting Analysis...')}")
 
-    # Metric 4: Defect Density (Bar Chart) - X-axis is RaisedIn (SprintID)
+    # Metric 4: Defect Density (Line/Bar Chart) - X-axis is RaisedIn (SprintID)
     with col4:
         st.subheader("4. Defect Density (Defects per Sprint vs. Stories)")
         df_den = pd.DataFrame(metrics_data['density'])
         
+        # --- IMPORTANT: Use SprintNumeric for the actual plotting ---
         fig_den = go.Figure(data=[
-            go.Bar(name='Defect Count', x=df_den['RaisedIn'], y=df_den['DefectCount'], yaxis='y1', marker_color='#ef4444'),
-            go.Scatter(name='Story Count', x=df_den['RaisedIn'], y=df_den['StoryCount'], yaxis='y2', mode='lines+markers', marker_color='#059669')
+            go.Bar(name='Defect Count', x=df_den['SprintNumeric'], y=df_den['DefectCount'], yaxis='y1', marker_color='#ef4444'),
+            go.Scatter(name='Story Count', x=df_den['SprintNumeric'], y=df_den['StoryCount'], yaxis='y2', mode='lines+markers', marker_color='#059669')
         ])
 
         fig_den.update_layout(
@@ -331,8 +346,12 @@ if data_ready:
             yaxis2=dict(title='Story Count', side='right', overlaying='y', showgrid=False),
             legend=dict(x=0.01, y=0.99)
         )
-        if ordered_sprints_for_plotly: 
-            fig_den.update_xaxes(categoryorder='array', categoryarray=ordered_sprints_for_plotly) 
+        # --- IMPORTANT: Custom X-axis tick labels to show SprintID ---
+        if sprint_numeric_to_id_map: 
+            fig_den.update_xaxes(
+                tickvals=list(sprint_numeric_to_id_map.keys()), 
+                ticktext=list(sprint_numeric_to_id_map.values()) 
+            )
         
         st.plotly_chart(fig_den, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('density', 'Awaiting Analysis...')}")
@@ -340,7 +359,7 @@ if data_ready:
     # 6.3 Defect Distribution & RAID Summary (Two components in one row)
     col5, col6 = st.columns(2)
     
-    # Metric 5: Defect Stage Distribution (Pie Chart) 
+    # Metric 5: Defect Stage Distribution (Pie Chart) - No Sprint X-axis
     with col5:
         st.subheader("5. Defect Stage Distribution (Open Defects by Phase)")
         df_stage = pd.DataFrame(metrics_data['stage'])
@@ -350,7 +369,7 @@ if data_ready:
         st.plotly_chart(fig_stage, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('stage', 'Awaiting Analysis...')}")
 
-    # Metric 6: RAID Summary (Table) 
+    # Metric 6: RAID Summary (Table) - No Sprint X-axis
     with col6:
         st.subheader("6. RAID Summary (Open Items)")
         df_raid = pd.DataFrame(metrics_data['raid'])

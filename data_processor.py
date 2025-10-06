@@ -40,12 +40,12 @@ def load_and_process_data(jira_file, defects_file, raid_file):
         return {"error": f"Defects data is missing required columns: {', '.join(missing_cols)}."}
     df_defects['RaisedIn'] = df_defects['RaisedIn'].astype(str)
 
-    required_raid_cols = ['Type', 'Status', 'Owner', 'Target Date']
+    required_raid_cols = ['Type', 'Status', 'Owner', 'TargetDate']
     if not all(col in df_raid.columns for col in required_raid_cols):
         missing_cols = [col for col in required_raid_cols if col not in df_raid.columns]
         return {"error": f"RAID data is missing required columns: {', '.join(missing_cols)}."}
     
-    df_raid['DueDate'] = pd.to_datetime(df_raid['Target Date'], errors='coerce')
+    df_raid['DueDate'] = pd.to_datetime(df_raid['TargetDate'], errors='coerce')
 
     # --- Get Unique Sorted Sprints ---
     unique_sprints_df = df_jira[['SprintID', 'SprintNumeric']].drop_duplicates().sort_values('SprintNumeric', ignore_index=True)

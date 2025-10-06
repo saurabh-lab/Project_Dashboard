@@ -11,6 +11,7 @@ from datetime import date
 
 import base64 
 import re 
+import numpy as np # Added for np.nan checks
 
 # --- 1. CONFIGURATION AND INITIAL SETUP ---
 st.set_page_config(layout="wide", page_title="AI Program Health Dashboard")
@@ -256,16 +257,11 @@ if data_ready:
     st.header("Programmatic Health Metrics")
 
     # --- PREPARE SPRINT ORDER & LABELS FOR PLOTLY ---
-    # This block is simplified as we now have SprintNumeric in the dataframes
     temp_df_for_sprints = pd.DataFrame(metrics_data['velocity'])
-    # Create a mapping from numeric to ID for x-axis tick labels
     sprint_numeric_to_id_map = {}
     if not temp_df_for_sprints.empty and 'SprintID' in temp_df_for_sprints.columns and 'SprintNumeric' in temp_df_for_sprints.columns:
-        # Get unique numeric sprints, sorted
         unique_numeric_sprints = sorted(temp_df_for_sprints['SprintNumeric'].unique())
-        # Create a mapping dictionary for tick labels
         for num_sprint in unique_numeric_sprints:
-            # Find the corresponding SprintID for this numeric sprint
             sprint_id = temp_df_for_sprints[temp_df_for_sprints['SprintNumeric'] == num_sprint]['SprintID'].iloc[0]
             sprint_numeric_to_id_map[num_sprint] = sprint_id
     
@@ -279,37 +275,57 @@ if data_ready:
     with col1:
         st.subheader("1. Velocity Trend (Completed Story Points/Sprint)")
         df_vel = pd.DataFrame(metrics_data['velocity'])
-        # Use SprintNumeric for x-axis, Plotly will draw a continuous line
+        
+        # --- DEBUGGING VELOCITY DATA ---
+        st.write("DEBUG: df_vel head()")
+        st.dataframe(df_vel.head())
+        st.write("DEBUG: df_vel dtypes")
+        st.dataframe(df_vel.dtypes.to_frame().T)
+        st.write(f"DEBUG: NaN in SprintNumeric (df_vel): {df_vel['SprintNumeric'].isnull().sum()}")
+        st.write(f"DEBUG: NaN in CompletedPoints (df_vel): {df_vel['CompletedPoints'].isnull().sum()}")
+        st.write(f"DEBUG: NaN in CommittedPoints (df_vel): {df_vel['CommittedPoints'].isnull().sum()}")
+        # --- END DEBUGGING ---
+
         fig_vel = px.line(df_vel, x='SprintNumeric', y='CompletedPoints', 
                          title='Completed Story Points Over Time', markers=True,
                          color_discrete_sequence=['#1e40af'])
-        fig_vel.add_trace(go.Scatter(x=df_vel['SprintNumeric'], y=df_vel['CommittedPoints'], # Use SprintNumeric here too
+        fig_vel.add_trace(go.Scatter(x=df_vel['SprintNumeric'], y=df_vel['CommittedPoints'], 
                                     mode='lines', name='Committed Points', line=dict(dash='dot', color='#ef4444')))
         
-        # --- IMPORTANT: Custom X-axis tick labels to show SprintID ---
         if sprint_numeric_to_id_map:
             fig_vel.update_xaxes(
-                tickvals=list(sprint_numeric_to_id_map.keys()), # The numeric positions
-                ticktext=list(sprint_numeric_to_id_map.values()) # The categorical labels
+                tickvals=list(sprint_numeric_to_id_map.keys()), 
+                ticktext=list(sprint_numeric_to_id_map.values()),
+                dtick=1 # Explicitly set tick interval to 1 to ensure all integer sprints are shown
             )
         
         st.plotly_chart(fig_vel, use_container_width=True)
         st.markdown(f"**AI Insight:** {st.session_state['ai_summaries'].get('velocity', 'Awaiting Analysis...')}")
 
-    # Metric 2: Sprint Goal Completion (Bar Chart) - This should connect fine with numeric X
+    # Metric 2: Sprint Goal Completion (Bar Chart) 
     with col2:
         st.subheader("2. Sprint Goal Completion (Committed vs. Completed)")
         df_comp = pd.DataFrame(metrics_data['completion'])
-        # Use SprintNumeric for x-axis
+        
+        # --- DEBUGGING COMPLETION DATA ---
+        st.write("DEBUG: df_comp head()")
+        st.dataframe(df_comp.head())
+        st.write("DEBUG: df_comp dtypes")
+        st.dataframe(df_comp.dtypes.to_frame().T)
+        st.write(f"DEBUG: NaN in SprintNumeric (df_comp): {df_comp['SprintNumeric'].isnull().sum()}")
+        st.write(f"DEBUG: NaN in CommittedPoints (df_comp): {df_comp['CommittedPoints'].isnull().sum()}")
+        st.write(f"DEBUG: NaN in CompletedPoints (df_comp): {df_comp['CompletedPoints'].isnull().sum()}")
+        # --- END DEBUGGING ---
+
         fig_comp = px.bar(df_comp, x='SprintNumeric', y=['CommittedPoints', 'CompletedPoints'], 
                          title='Committed vs. Completed Points', barmode='group',
                          color_discrete_map={'CommittedPoints': '#1d4ed8', 'CompletedPoints': '#34d399'})
         
-        # --- IMPORTANT: Custom X-axis tick labels to show SprintID ---
         if sprint_numeric_to_id_map:
             fig_comp.update_xaxes(
-                tickvals=list(sprint_numeric_to_id_map.keys()), # The numeric positions
-                ticktext=list(sprint_numeric_to_id_map.values()) # The categorical labels
+                tickvals=list(sprint_numeric_to_id_map.keys()), 
+                ticktext=list(sprint_numeric_to_id_map.values()),
+                dtick=1 # Explicitly set tick interval to 1
             )
             
         st.plotly_chart(fig_comp, use_container_width=True)
@@ -333,7 +349,16 @@ if data_ready:
         st.subheader("4. Defect Density (Defects per Sprint vs. Stories)")
         df_den = pd.DataFrame(metrics_data['density'])
         
-        # --- IMPORTANT: Use SprintNumeric for the actual plotting ---
+        # --- DEBUGGING DENSITY DATA ---
+        st.write("DEBUG: df_den head()")
+        st.dataframe(df_den.head())
+        st.write("DEBUG: df_den dtypes")
+        st.dataframe(df_den.dtypes.to_frame().T)
+        st.write(f"DEBUG: NaN in SprintNumeric (df_den): {df_den['SprintNumeric'].isnull().sum()}")
+        st.write(f"DEBUG: NaN in DefectCount (df_den): {df_den['DefectCount'].isnull().sum()}")
+        st.write(f"DEBUG: NaN in StoryCount (df_den): {df_den['StoryCount'].isnull().sum()}")
+        # --- END DEBUGGING ---
+
         fig_den = go.Figure(data=[
             go.Bar(name='Defect Count', x=df_den['SprintNumeric'], y=df_den['DefectCount'], yaxis='y1', marker_color='#ef4444'),
             go.Scatter(name='Story Count', x=df_den['SprintNumeric'], y=df_den['StoryCount'], yaxis='y2', mode='lines+markers', marker_color='#059669')
@@ -346,11 +371,11 @@ if data_ready:
             yaxis2=dict(title='Story Count', side='right', overlaying='y', showgrid=False),
             legend=dict(x=0.01, y=0.99)
         )
-        # --- IMPORTANT: Custom X-axis tick labels to show SprintID ---
         if sprint_numeric_to_id_map: 
             fig_den.update_xaxes(
                 tickvals=list(sprint_numeric_to_id_map.keys()), 
-                ticktext=list(sprint_numeric_to_id_map.values()) 
+                ticktext=list(sprint_numeric_to_id_map.values()),
+                dtick=1 # Explicitly set tick interval to 1
             )
         
         st.plotly_chart(fig_den, use_container_width=True)

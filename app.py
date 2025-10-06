@@ -182,12 +182,9 @@ if data_ready:
                 html_content_parts.append("<ul>")
                 for line in lines[1:]:
                     if line.strip().startswith('*'):
-
-			# Process list item: remove leading '*' and then remove any '**' for bolding
                         list_item_content = line.strip()[1:].strip()
                         list_item_content = list_item_content.replace('**', '')
-                        html_content_parts.append(f"<li>{line.strip()[1:].strip()}</li>")
-
+                        html_content_parts.append(f"<li>{list_item_content}</li>")
                     elif line.strip(): 
                         html_content_parts.append(f"<p>{line.strip()}</p>")
                 html_content_parts.append("</ul>")
